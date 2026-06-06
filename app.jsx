@@ -16,12 +16,12 @@ function App() {
   // Apply theme + accent on mount and tweak changes
   React.useEffect(() => {
     document.documentElement.setAttribute("data-theme", tweaks.theme);
-    document.documentElement.style.setProperty("--indigo", `oklch(0.65 0.18 ${tweaks.accentHue})`);
+    document.documentElement.style.setProperty("--indigo",   `oklch(0.65 0.18 ${tweaks.accentHue})`);
     document.documentElement.style.setProperty("--indigo-2", `oklch(0.74 0.16 ${tweaks.accentHue})`);
   }, [tweaks.theme, tweaks.accentHue]);
 
   React.useEffect(() => {
-    const onHash = () => setRoute(location.hash.replace("#", "") || "home");
+    const onHash = () => setRoute(location.hash.replace("#","") || "home");
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -34,8 +34,8 @@ function App() {
         <LoginScreen />
         <TweaksPanel>
           <TweakSection label="ธีม">
-            <TweakRadio label="โหมด" value={tweaks.theme} onChange={v => setTweak("theme", v)} options={["dark", "light"]} />
-            <TweakSlider label="สีหลัก (Hue)" value={tweaks.accentHue} onChange={v => setTweak("accentHue", v)} min={0} max={360} step={5} unit="°" />
+            <TweakRadio label="โหมด" value={tweaks.theme} onChange={v => setTweak("theme", v)} options={["dark","light"]}/>
+            <TweakSlider label="สีหลัก (Hue)" value={tweaks.accentHue} onChange={v => setTweak("accentHue", v)} min={0} max={360} step={5} unit="°"/>
           </TweakSection>
         </TweaksPanel>
       </>
@@ -43,9 +43,9 @@ function App() {
   }
 
   const navItems = [
-    { id: "home", label: "หน้าแรก", icon: "home" },
-    { id: "calendar", label: "ปฏิทิน", icon: "cal" },
-    { id: "profile", label: "โปรไฟล์", icon: "user" },
+    { id: "home",     label: "หน้าแรก",   icon: "home" },
+    { id: "calendar", label: "ปฏิทิน",    icon: "cal" },
+    { id: "profile",  label: "โปรไฟล์",   icon: "user" },
   ];
   if (me.role === "admin") navItems.push({ id: "admin", label: "Admin", icon: "shield" });
 
@@ -61,16 +61,17 @@ function App() {
       <div className="app">
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <div className="logo"><img src="assets/logo.png" alt="4KING SOCUTE" /></div>
+            <div className="logo"><img src="assets/logo.png" alt="4KING SOCUTE"/></div>
             <div>
               <div className="name">4KING SOCUTE</div>
+              <div className="sub">CALENDAR </div>
             </div>
           </div>
 
           <div className="nav-section">หลัก</div>
           {navItems.map(n => (
             <a key={n.id} className={"nav-item " + (route === n.id ? "active" : "")} href={"#" + n.id} onClick={(e) => { e.preventDefault(); go(n.id); }}>
-              <Icon name={n.icon} size={16} />
+              <Icon name={n.icon} size={16}/>
               {n.label}
               {n.id === "calendar" && Object.keys(state.notes).length > 0 && (
                 <span style={{ marginLeft: "auto", fontSize: 10, background: "var(--surface-3)", padding: "2px 7px", borderRadius: 999, color: "var(--muted)" }}>
@@ -94,7 +95,7 @@ function App() {
 
           <div className="sidebar-foot">
             <div className="row" style={{ marginBottom: 8 }}>
-              <SyncStatus state={state} />
+              <SyncStatus state={state}/>
             </div>
             <div className="user-chip" onClick={() => go("profile")}>
               <div className="avatar" style={me.avatar ? { backgroundImage: `url(${me.avatar})`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>
@@ -105,7 +106,7 @@ function App() {
                 <div className="role">{me.role}</div>
               </div>
               <button className="icon-btn" onClick={(e) => { e.stopPropagation(); store.logout(); }} title="ออกจากระบบ">
-                <Icon name="logout" size={14} />
+                <Icon name="logout" size={14}/>
               </button>
             </div>
           </div>
@@ -120,32 +121,32 @@ function App() {
             </div>
             <div className="topbar-actions">
               <button className="btn sm" onClick={() => go("calendar")}>
-                <Icon name="cal" size={14} /> ปฏิทินวันนี้
+                <Icon name="cal" size={14}/> ปฏิทินวันนี้
               </button>
               {(me.role === "admin" || me.role === "editor") && (
                 <button className="btn primary sm" onClick={() => {
                   window.dispatchEvent(new CustomEvent("wt:compose"));
                 }}>
-                  <Icon name="plus" size={14} /> ลงประกาศ
+                  <Icon name="plus" size={14}/> ลงประกาศ
                 </button>
               )}
             </div>
           </div>
 
-          {route === "home" && <HomeScreen go={go} />}
-          {route === "calendar" && <CalendarScreen />}
-          {route === "admin" && <AdminScreen />}
-          {route === "profile" && <ProfileScreen />}
+          {route === "home" && <HomeScreen go={go}/>}
+          {route === "calendar" && <CalendarScreen/>}
+          {route === "admin" && <AdminScreen/>}
+          {route === "profile" && <ProfileScreen/>}
         </main>
       </div>
 
       <TweaksPanel>
         <TweakSection label="ธีม">
-          <TweakRadio label="โหมด" value={tweaks.theme} onChange={v => setTweak("theme", v)} options={["dark", "light"]} />
-          <TweakSlider label="สีหลัก (Hue)" value={tweaks.accentHue} onChange={v => setTweak("accentHue", v)} min={0} max={360} step={5} unit="°" />
+          <TweakRadio label="โหมด" value={tweaks.theme} onChange={v => setTweak("theme", v)} options={["dark","light"]}/>
+          <TweakSlider label="สีหลัก (Hue)" value={tweaks.accentHue} onChange={v => setTweak("accentHue", v)} min={0} max={360} step={5} unit="°"/>
         </TweakSection>
         <TweakSection label="ข้อมูล">
-          <TweakButton label="Reset seed data" onClick={() => { if (confirm("ล้างข้อมูลทดลองและ seed ใหม่?")) store.reset(); }} />
+          <TweakButton label="Reset seed data" onClick={() => { if (confirm("ล้างข้อมูลทดลองและ seed ใหม่?")) store.reset(); }}/>
         </TweakSection>
       </TweaksPanel>
     </>
@@ -179,4 +180,4 @@ function SyncStatus({ state }) {
 }
 
 window.App = App;
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
