@@ -19,7 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT       = process.env.PORT       || 8787;
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const MODEL      = process.env.MODEL      || 'llama3.1';
+let   MODEL      = process.env.MODEL      || 'qwen2.5:7b';   // เก่งภาษาไทย/คณิตกว่า llama3.1 (มี fallback อัตโนมัติด้านล่าง)
 const NUM_CTX    = +(process.env.NUM_CTX  || 8192);   // ต้องกว้างพอให้โมเดล "เห็น" เนื้อหายาว (ดีฟอลต์ Ollama = 2048 น้อยไป)
 const KEEP_ALIVE = process.env.KEEP_ALIVE || '30m';   // คาโมเดลไว้ใน RAM สรุปครั้งถัดไปเร็วขึ้น
 
@@ -149,10 +149,16 @@ async function summarizeSchema(material, langName) {
   const content = material.length > 6500 ? await condense(material, langName) : material;
 
   const blockPrompt =
-    `คุณเป็นติวเตอร์ สรุปเนื้อหาต่อไปนี้เพื่อเตรียมสอบ ตอบเป็น ${langName} เท่านั้น และตอบกลับเป็น JSON ล้วนๆ ` +
-    `ตาม schema: {"title":string,"lead":string,"blocks":[{"cat":"key|warn|summary|def|sub|term","h":string,"items":[string]}]} ` +
-    `โดย cat: key=ใจความสำคัญ, warn=ข้อควรระวัง/จุดที่มักผิด, summary=สรุปคีย์เวิร์ด, def=นิยาม/ทฤษฎี, sub=ข้อมูลรอง/ข้อยกเว้น, term=คำเฉพาะ/ตัวเลข/ชื่อ. ` +
-    `สร้าง blocks 4-6 อัน แต่ละอันมี h ที่สื่อความและ items 2-4 ข้อ ครอบคลุมประเด็นสำคัญให้ครบ (ห้ามใส่ quiz).\n\nเนื้อหา:\n${content}`;
+    `คุณเป็นติวเตอร์ที่อธิบายเก่ง สรุปเนื้อหาต่อไปนี้เพื่อเตรียมสอบ ให้ "เข้าใจง่ายแต่ละเอียดครบถ้วน" ตอบเป็น ${langName} เท่านั้น และตอบกลับเป็น JSON ล้วนๆ (ไม่มีข้อความอื่น ไม่มี markdown) ` +
+    `ตาม schema: {"title":string,"lead":string,"blocks":[{"cat":"key|warn|summary|def|sub|term","h":string,"items":[string]}]}\n` +
+    `ข้อกำหนดคุณภาพ (สำคัญมาก):\n` +
+    `- title: ชื่อหัวข้อที่ถูกต้องและเป็นธรรมชาติ ถ้าเป็นศัพท์เทคนิคให้ใช้คำที่ถูก (เช่น dot product = "ผลคูณเชิงสเกลาร์")\n` +
+    `- lead: เกริ่นนำ 2-3 ประโยค บอกว่าเรื่องนี้คืออะไรและสำคัญอย่างไร\n` +
+    `- แต่ละ item ต้องเป็น "ประโยคสมบูรณ์" ที่อ่านแล้วเข้าใจได้ด้วยตัวเอง อธิบายนิยาม เหตุผล วิธีทำ หรือยกตัวอย่างประกอบ ห้ามเขียนเป็นคำโดดๆ ตัวย่อ หรือสัญลักษณ์ที่อ่านแล้วงง\n` +
+    `- ถ้ามีสูตร/ขั้นตอน/ตัวเลข ให้อธิบายความหมายของแต่ละส่วนด้วยภาษาคน\n` +
+    `- ใช้ภาษาเข้าใจง่ายแต่ครบถ้วน ไม่ตัดทอนจนเสียใจความ\n` +
+    `- cat: key=ใจความสำคัญ, warn=ข้อควรระวัง/จุดที่มักผิด, summary=สรุปรวบยอด, def=นิยาม/ทฤษฎี, sub=รายละเอียด/ตัวอย่าง, term=คำเฉพาะ/สูตร\n` +
+    `สร้าง blocks 4-6 อัน แต่ละอันมี h ที่สื่อความ และ items 3-5 ข้อ (ห้ามใส่ quiz).\n\nเนื้อหา:\n${content}`;
 
   // quiz: ไม่ใช้ format:json (จะทำให้ llama3.1 พ่นก้อนละ 1 ข้อ) — ขอ array ตรงๆ แล้วกวาดเอา
   const quizPrompt =
@@ -162,14 +168,18 @@ async function summarizeSchema(material, langName) {
     `โดย answer เป็นดัชนีตัวเลือกที่ถูก (0,1,2). ต้องมีครบ 3 ข้อ แต่ละข้อมี 3 ตัวเลือก.\n\nเนื้อหา:\n${content}`;
 
   const [rawB, rawQ] = await Promise.all([
-    ollamaChat([{ role: 'user', content: blockPrompt }], { json: true,  num_predict: 2600 }),
+    ollamaChat([{ role: 'user', content: blockPrompt }], { json: true,  num_predict: 5200 }),
     ollamaChat([{ role: 'user', content: quizPrompt }],  { json: false, num_predict: 1600 })
   ]);
 
   const b = extractJSON(rawB);
   if (!b || !Array.isArray(b.blocks)) return null;   // ให้ผู้เรียกไป fallback
+  // กรองบล็อกที่ไม่สมบูรณ์ (โดนตัดกลางคัน) ออก กัน [undefined]
+  const blocks = b.blocks.filter(x => x && typeof x.h === 'string' && x.h.trim() && Array.isArray(x.items) && x.items.filter(Boolean).length)
+    .map(x => ({ cat: x.cat || 'key', h: x.h, items: x.items.filter(it => it && String(it).trim()) }));
+  if (!blocks.length) return null;
   const quiz = extractQuiz(rawQ).slice(0, 5);
-  return JSON.stringify({ title: b.title || '', lead: b.lead || '', blocks: b.blocks, quiz });
+  return JSON.stringify({ title: b.title || '', lead: b.lead || '', blocks, quiz });
 }
 
 // ---------- Web search (DuckDuckGo HTML, ไม่ต้องมี API key) สำหรับอิงข้อสอบเก่าจริง ----------
@@ -345,9 +355,27 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🌸 SummarizeMe backend`);
-  console.log(`   ▶ http://localhost:${PORT}`);
-  console.log(`   ▶ Ollama : ${OLLAMA_URL}  (model: ${MODEL})`);
-  console.log(`   ▶ ตั้งค่า Backend URL ในหน้าเว็บเป็น  http://localhost:${PORT}\n`);
+// เลือกโมเดลอัตโนมัติ: ถ้าไม่พบโมเดลที่ตั้งไว้ ใช้ตัวที่มีในเครื่อง (เลือก qwen ก่อน)
+async function resolveModel() {
+  try {
+    const r = await fetch(`${OLLAMA_URL}/api/tags`);
+    if (!r.ok) return;
+    const names = ((await r.json()).models || []).map(m => m.name);
+    if (!names.length) return;
+    const base = MODEL.split(':')[0];
+    const has = names.some(n => n === MODEL || n.split(':')[0] === base);
+    if (!has) {
+      MODEL = names.find(n => /qwen/i.test(n)) || names.find(n => /llama/i.test(n)) || names[0];
+      console.log(`   ⚠ ไม่พบโมเดลที่ตั้งไว้ → ใช้ ${MODEL} แทน`);
+    }
+  } catch (_) {}
+}
+
+resolveModel().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`\n🌸 SummarizeMe backend`);
+    console.log(`   ▶ http://localhost:${PORT}`);
+    console.log(`   ▶ Ollama : ${OLLAMA_URL}  (model: ${MODEL})`);
+    console.log(`   ▶ ตั้งค่า Backend URL ในหน้าเว็บเป็น  http://localhost:${PORT}\n`);
+  });
 });

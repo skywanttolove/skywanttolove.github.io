@@ -13,9 +13,9 @@
 **1) ลง Ollama + โหลดโมเดล**
 โหลดจาก https://ollama.com/download แล้วเปิดโปรแกรม จากนั้นใน Terminal/PowerShell:
 ```
-ollama pull llama3.1
+ollama pull qwen2.5:7b
 ```
-เครื่องแรมน้อย (8GB): `ollama pull llama3.2:3b` · เน้นจีน/ญี่ปุ่น: `ollama pull qwen2.5:7b`
+เครื่องแรมน้อย (8GB): ollama pull llama3.2:3b · qwen2.5:7b = ค่าเริ่มต้น (เก่งภาษาไทย/คณิต ต้องการ RAM ~8GB+)
 
 **2) รัน backend** (โฟลเดอร์ `backend/`) — ต้องมี Node.js 18+
 ```
