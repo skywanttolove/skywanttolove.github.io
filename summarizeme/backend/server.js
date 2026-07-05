@@ -172,6 +172,37 @@ async function summarizeSchema(material, langName) {
   return JSON.stringify({ title: b.title || '', lead: b.lead || '', blocks: b.blocks, quiz });
 }
 
+// ---------- Web search (DuckDuckGo HTML, ไม่ต้องมี API key) สำหรับอิงข้อสอบเก่าจริง ----------
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+async function ddgSearch(query, limit = 6) {
+  const r = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query), { headers: { 'User-Agent': UA } });
+  const html = await r.text();
+  const out = [];
+  const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = re.exec(html)) && out.length < limit) {
+    let href = m[1];
+    const um = href.match(/uddg=([^&]+)/);
+    if (um) href = decodeURIComponent(um[1]);
+    const title = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (/^https?:\/\//.test(href) && title) out.push({ title, url: href });
+  }
+  return out;
+}
+async function fetchText(url, max = 1800) {
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': UA } });
+    clearTimeout(to);
+    if (!r.ok) return '';
+    if (!/text|html/.test(r.headers.get('content-type') || '')) return '';
+    let html = await r.text();
+    html = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ');
+    return html.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  } catch { return ''; }
+}
+
 // ---------- health ----------
 app.get('/api/health', async (_req, res) => {
   try {
@@ -216,6 +247,50 @@ app.post('/api/ai', async (req, res) => {
     // fallback / แชตทั่วไป — ยิงตรงแบบเดิม
     const text = await ollamaChat(full, { json, num_predict: json ? 4096 : 900 });
     res.json({ text });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---------- Exam: ออกข้อสอบอิงข้อสอบเก่าจริงจากเว็บ + อ้างอิงแหล่ง ----------
+// body: { topic, content?, lang? }  →  { quiz:[...], sources:[{title,url}] }
+app.post('/api/exam', async (req, res) => {
+  try {
+    const { topic = '', content = '', lang = 'th' } = req.body || {};
+    const langName = { th: 'ภาษาไทย', en: 'English', ja: '日本語', zh: '中文' }[lang] || 'ภาษาไทย';
+    const t = String(topic || '').trim() || String(content || '').replace(/\s+/g, ' ').slice(0, 60).trim();
+    if (!t) return res.status(400).json({ error: 'ต้องมีหัวข้อหรือเนื้อหา' });
+
+    const q = t + (lang === 'en' ? ' past exam questions quiz with answers' : ' ข้อสอบเก่า แบบทดสอบ พร้อมเฉลย');
+    let sources = [];
+    try { sources = await ddgSearch(q, 6); } catch (_) { sources = []; }
+
+    // ดึงเนื้อหาจากแหล่งจริงมาช่วย ground (best-effort บางเว็บโหลดไม่ได้ก็ข้าม)
+    const grounds = [];
+    for (const sc of sources.slice(0, 4)) {
+      const txt = await fetchText(sc.url, 1500);
+      if (txt && txt.length > 200) grounds.push('อ้างอิง: ' + sc.title + '\n' + txt);
+      if (grounds.length >= 3) break;
+    }
+    const refBlock = (grounds.length ? grounds.join('\n\n---\n\n') : String(content || '').slice(0, 3000)).slice(0, 6500);
+
+    const prompt =
+      `คุณเป็นผู้ออกข้อสอบมืออาชีพ ด้านล่างคือเนื้อหาจาก "ข้อสอบเก่า/แบบทดสอบจริง" ที่ค้นจากอินเทอร์เน็ต เรื่อง "${t}" ` +
+      `จงออกข้อสอบปรนัยแนวเดียวกับข้อสอบเก่าเหล่านี้ 5 ข้อ ตอบเป็น ${langName}. ` +
+      `ตอบกลับเป็น JSON array ล้วนๆ (ไม่มีข้อความอื่น): [{"q":"คำถาม","options":["ตัวเลือกA","ตัวเลือกB","ตัวเลือกC","ตัวเลือกD"],"answer":0,"exp":"เฉลยพร้อมคำอธิบายสั้นๆ"}] ` +
+      `โดย answer เป็นดัชนีตัวเลือกที่ถูก (0-3) แต่ละข้อมี 4 ตัวเลือก. เน้นจุดที่ข้อสอบมักออกและครอบคลุมเนื้อหา.\n\nเนื้อหาอ้างอิงจากข้อสอบจริง:\n` + refBlock;
+
+    // วนสะสมข้อสอบ (unique) จนได้ครบ ~5 ข้อ (โมเดลเล็กบางรอบให้ไม่ครบ)
+    const quiz = [];
+    const seenQ = new Set();
+    for (let attempt = 0; attempt < 3 && quiz.length < 5; attempt++) {
+      const raw = await ollamaChat([{ role: 'user', content: prompt }], { json: false, num_predict: 2000, temperature: 0.4 });
+      for (const item of extractQuiz(raw)) {
+        const key = (item.q || '').slice(0, 40);
+        if (key && !seenQ.has(key)) { seenQ.add(key); quiz.push(item); }
+      }
+    }
+    res.json({ quiz: quiz.slice(0, 8), sources: sources.slice(0, 6), grounded: grounds.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
